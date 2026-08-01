@@ -1,0 +1,32 @@
+## .NET
+bin/
+obj/
+out/
+*.user
+*.suo
+.vs/
+
+## Rider / VS Code
+.idea/
+.vscode/
+
+## Build / test
+[Dd]ebug/
+[Rr]elease/
+TestResults/
+*.trx
+coverage*.json
+coverage*.xml
+
+## AWS CDK
+infra/**/cdk.out/
+cdk.context.json
+
+## Env / secrets — never commit
+.env
+*.env
+appsettings.*.Local.json
+
+## OS
+.DS_Store
+Thumbs.db

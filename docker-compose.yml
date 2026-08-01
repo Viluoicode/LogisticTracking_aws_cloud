@@ -1,0 +1,54 @@
+# M0: chạy trọn hệ ở local — Postgres + LocalStack (SNS/SQS giả) + 3 service.
+# Chưa tốn AWS. DB/messaging thật được nối ở M3/M5.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: logi
+      POSTGRES_PASSWORD: logi
+      POSTGRES_DB: logistics
+    ports:
+      # Host 5433 để né PostgreSQL cài sẵn trên Windows (chiếm 5432).
+      # Container nội bộ vẫn 5432 -> service khác nối "postgres:5432" không đổi.
+      - "5433:5432"
+
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: "sns,sqs"
+    ports:
+      - "4566:4566"
+
+  shipment-api:
+    build:
+      context: .
+      args:
+        PROJECT: src/Services/Shipment/Shipment.Api/Shipment.Api.csproj
+        APP_DLL: Shipment.Api.dll
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+      - localstack
+
+  tracking-api:
+    build:
+      context: .
+      args:
+        PROJECT: src/Services/Tracking/Tracking.Api/Tracking.Api.csproj
+        APP_DLL: Tracking.Api.dll
+    ports:
+      - "8082:8080"
+    depends_on:
+      - postgres
+      - localstack
+
+  notification-worker:
+    build:
+      context: .
+      args:
+        PROJECT: src/Services/Notification/Notification.Worker/Notification.Worker.csproj
+        APP_DLL: Notification.Worker.dll
+    depends_on:
+      - postgres
+      - localstack

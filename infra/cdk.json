@@ -1,0 +1,8 @@
+{
+  "app": "dotnet run --project Logistics.Infra.csproj",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["README.md", "cdk*.json", "bin", "obj", "**/*.csproj"]
+  },
+  "context": {}
+}
