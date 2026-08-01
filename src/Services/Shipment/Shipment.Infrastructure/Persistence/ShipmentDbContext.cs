@@ -1,9 +1,11 @@
+using Logistics.Shipment.Application.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Domain = Logistics.Shipment.Domain;
 
 namespace Logistics.Shipment.Infrastructure.Persistence;
 
-public sealed class ShipmentDbContext : DbContext
+// DbContext đóng luôn vai IUnitOfWork: SaveChangesAsync(CancellationToken) đã sẵn có.
+public sealed class ShipmentDbContext : DbContext, IUnitOfWork
 {
     public ShipmentDbContext(DbContextOptions<ShipmentDbContext> options) : base(options) { }
 
