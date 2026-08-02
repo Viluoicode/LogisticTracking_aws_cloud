@@ -15,6 +15,14 @@ internal sealed class ShipmentConfiguration : IEntityTypeConfiguration<Domain.Sh
         builder.ToTable("shipments");
         builder.HasKey(s => s.Id);
 
+        // A3: optimistic concurrency dùng cột hệ thống Postgres "xmin" (không thêm cột thật).
+        // (Npgsql 9 gỡ UseXminAsConcurrencyToken → map shadow property thủ công.)
+        // Hai update đồng thời -> update thứ 2 ném DbUpdateConcurrencyException -> API trả 409.
+        builder.Property<uint>("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+
         // TrackingCode (value object) -> cột string, unique
         builder.Property(s => s.Code)
             .HasConversion(code => code.Value, value => Domain.TrackingCode.From(value))

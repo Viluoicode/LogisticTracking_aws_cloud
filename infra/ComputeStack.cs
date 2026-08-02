@@ -1,4 +1,5 @@
 using Amazon.CDK;
+using Amazon.CDK.AWS.ApplicationAutoScaling;
 using Amazon.CDK.AWS.CloudWatch;
 using Amazon.CDK.AWS.EC2;
 using Amazon.CDK.AWS.ECR;
@@ -43,16 +44,45 @@ public class ComputeStack : Stack
             VpcSubnets = new SubnetSelection { SubnetType = SubnetType.PUBLIC }
         });
 
-        _listener = alb.AddListener("HttpListener", new BaseApplicationListenerProps
+        var notFound = ListenerAction.FixedResponse(404, new FixedResponseOptions
         {
-            Port = 80,
-            Protocol = ApplicationProtocol.HTTP,
-            DefaultAction = ListenerAction.FixedResponse(404, new FixedResponseOptions
-            {
-                ContentType = "text/plain",
-                MessageBody = "No matching route"
-            })
+            ContentType = "text/plain",
+            MessageBody = "No matching route"
         });
+
+        // A4: có ACM cert (truyền -c certArn=arn:aws:acm:...) -> HTTPS 443 + redirect 80->443.
+        //     Không có -> HTTP 80 (dev). Encryption in transit chỉ bật khi bạn có domain + cert.
+        var certArn = Node.TryGetContext("certArn") as string;
+        if (!string.IsNullOrWhiteSpace(certArn))
+        {
+            _listener = alb.AddListener("HttpsListener", new BaseApplicationListenerProps
+            {
+                Port = 443,
+                Protocol = ApplicationProtocol.HTTPS,
+                Certificates = new[] { ListenerCertificate.FromArn(certArn) },
+                DefaultAction = notFound
+            });
+            alb.AddListener("HttpRedirect", new BaseApplicationListenerProps
+            {
+                Port = 80,
+                Protocol = ApplicationProtocol.HTTP,
+                DefaultAction = ListenerAction.Redirect(new RedirectOptions
+                {
+                    Protocol = "HTTPS",
+                    Port = "443",
+                    Permanent = true
+                })
+            });
+        }
+        else
+        {
+            _listener = alb.AddListener("HttpListener", new BaseApplicationListenerProps
+            {
+                Port = 80,
+                Protocol = ApplicationProtocol.HTTP,
+                DefaultAction = notFound
+            });
+        }
 
         AddHttpService("Shipment", shipmentRepo, "/shipments*");
         AddHttpService("Tracking", trackingRepo, "/track*");
@@ -105,10 +135,17 @@ public class ComputeStack : Stack
         {
             Cluster = _cluster,
             TaskDefinition = taskDef,
-            DesiredCount = 1,
+            DesiredCount = 2,        // A5: >=2 task -> HA (trải 2 AZ), không còn SPOF
             SecurityGroups = new[] { _ecsSg },
             AssignPublicIp = true,   // public subnet -> ra internet qua IGW, né NAT
             VpcSubnets = new SubnetSelection { SubnetType = SubnetType.PUBLIC }
+        });
+
+        // A5: autoscaling theo CPU (2 -> 6 task).
+        var scaling = service.AutoScaleTaskCount(new EnableScalingProps { MinCapacity = 2, MaxCapacity = 6 });
+        scaling.ScaleOnCpuUtilization($"{name}CpuScaling", new CpuUtilizationScalingProps
+        {
+            TargetUtilizationPercent = 60
         });
 
         // M7: alarm khi CPU service cao kéo dài.

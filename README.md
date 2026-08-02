@@ -14,7 +14,8 @@ Hệ thống **theo dõi & giao kiện hàng chặng cuối (last-mile parcel de
 - **CQRS + Clean Architecture** mỗi service; **database-per-service**; eventual consistency.
 - **CI/CD** GitHub Actions qua **OIDC** (không key dài hạn) → ECR → ECS.
 - **Observability**: Serilog (log có cấu trúc), health check kiểm DB, **OpenTelemetry** tracing, CloudWatch alarms.
-- **16 unit test** (domain state machine + use case) — `dotnet test`.
+- **Production hardening**: input validation (FluentValidation) → 400; **JWT auth** bảo vệ endpoint ghi; **optimistic concurrency** (xmin) → 409; **HA** (desiredCount≥2 + autoscaling); **HTTPS/TLS-ready** ở ALB.
+- **20 test** — unit (state machine + use case) + **integration (Testcontainers Postgres)** + contract — `dotnet test`.
 
 ▶ **Chạy thử local (~2 phút, cần Docker):** [docs/RUN.md](docs/RUN.md) · **Hiểu hạ tầng:** [docs/AWS-WALKTHROUGH.md](docs/AWS-WALKTHROUGH.md)
 

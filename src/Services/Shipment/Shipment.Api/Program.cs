@@ -8,10 +8,15 @@ using Logistics.Shipment.Domain;
 using Logistics.Shipment.Infrastructure;
 using Logistics.Shipment.Infrastructure.Persistence;
 using MediatR;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +24,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, config) => config.WriteTo.Console());
 
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<Logistics.Shipment.Api.GlobalExceptionHandler>();
 builder.Services.AddShipmentApplication();
 builder.Services.AddShipmentInfrastructure();
 
@@ -33,6 +40,27 @@ builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation()
         .AddConsoleExporter());
 
+// A2: JWT Bearer auth. DEMO dùng key đối xứng; PROD đổi sang Cognito (Authority + JWKS, không shared secret).
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "dev-only-demo-signing-key-please-change-32bytes!";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "logistics";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "logistics-clients";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ValidateLifetime = true
+        };
+    });
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 // Auto-migrate lúc khởi động (dev/demo; desiredCount=1 nên không đua migration).
@@ -43,7 +71,12 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 }
 
+app.UseExceptionHandler(); // map exception -> HTTP status (validation 400, not-found 404...)
+
 app.UseSerilogRequestLogging(); // mỗi HTTP request -> 1 dòng log có cấu trúc
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
@@ -56,7 +89,7 @@ app.MapPost("/shipments", async (CreateShipmentRequest req, ISender sender, Canc
 {
     var code = await sender.Send(new CreateShipmentCommand(req.Origin, req.Destination), ct);
     return Results.Created($"/shipments/{code}", new { trackingCode = code });
-});
+}).RequireAuthorization();
 
 // Tra cứu shipment theo mã
 app.MapGet("/shipments/{code}", async (string code, ISender sender, CancellationToken ct) =>
@@ -68,15 +101,24 @@ app.MapGet("/shipments/{code}", async (string code, ISender sender, Cancellation
 // Đổi trạng thái (pickedup/intransit/outfordelivery/delivered/failed/returned)
 app.MapPost("/shipments/{code}/status", async (string code, UpdateStatusRequest req, ISender sender, CancellationToken ct) =>
 {
-    try
+    await sender.Send(new UpdateShipmentStatusCommand(code, req.Action), ct);
+    return Results.NoContent();
+    // Exception (validation / not-found / invalid-transition) -> GlobalExceptionHandler map status.
+}).RequireAuthorization();
+
+// A2 (DEV ONLY): mint JWT để test. Prod: token do Cognito cấp, KHÔNG có endpoint này.
+if (app.Environment.IsDevelopment())
+{
+    app.MapPost("/dev/token", () =>
     {
-        await sender.Send(new UpdateShipmentStatusCommand(code, req.Action), ct);
-        return Results.NoContent();
-    }
-    catch (ShipmentNotFoundException) { return Results.NotFound(); }
-    catch (InvalidShipmentTransitionException ex) { return Results.BadRequest(new { error = ex.Message }); }
-    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
-});
+        var creds = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)), SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(jwtIssuer, jwtAudience,
+            [new Claim(ClaimTypes.NameIdentifier, "demo-user")],
+            expires: DateTime.UtcNow.AddHours(1), signingCredentials: creds);
+        return Results.Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
+    });
+}
 
 app.Run();
 
