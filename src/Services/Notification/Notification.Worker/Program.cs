@@ -1,7 +1,17 @@
-using Notification.Worker;
+using Logistics.Notification.Infrastructure;
+using Logistics.Notification.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddHostedService<Worker>();
+builder.Services.AddNotificationInfrastructure();
 
 var host = builder.Build();
+
+// Auto-migrate (dev/demo). Tạo DB "notification" nếu chưa có (database-per-service).
+using (var scope = host.Services.CreateScope())
+{
+    scope.ServiceProvider.GetRequiredService<NotificationDbContext>().Database.Migrate();
+}
+
 host.Run();

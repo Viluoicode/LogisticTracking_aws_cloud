@@ -132,7 +132,7 @@ dotnet run --project src/Services/Shipment/Shipment.Api
 | **M5a** | Outbox: integration event contract + bảng `outbox_messages` + capture domain event atomic lúc SaveChanges — test local OK (2 row Created+PickedUp, chưa publish) ✅ | ✅ |
 | **M5b** | `IEventPublisher`+SNS adapter, `OutboxDispatcher` (BackgroundService), LocalStack bootstrap — test local OK (4 event publish → SNS fan-out → SQS tracking-queue, outbox marked processed) ✅ | ✅ |
 | **M5c-1** | Tracking consumer (SQS long-poll) + read-model (DB riêng) + idempotency (`processed_messages`) — **test end-to-end OK**: Shipment→SNS→SQS→Tracking read-model, `GET /track/{code}` trả timeline ✅ | ✅ |
-| **M5c-2** | Notification consumer + DLQ (redrive) | ⬜ |
+| **M5c-2** | Notification consumer (SQS, idempotent) + **DLQ** (redrive maxReceiveCount=3) — test OK: event→notification "sent"; message rác fail 3 lần → notif-dlq ✅ | ✅ |
 | **M6** | CI/CD (GitHub Actions → ECR → ECS) | ⬜ |
 | **M7** | CloudWatch + X-Ray + idempotency + resilience | ⬜ |
 | **M8** | Unit/integration tests + docs | ⬜ |
