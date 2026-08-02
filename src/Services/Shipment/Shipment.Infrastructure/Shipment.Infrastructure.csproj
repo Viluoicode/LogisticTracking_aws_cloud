@@ -8,8 +8,11 @@
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.SimpleNotificationService" Version="4.0.100.7" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.4" />
     <PackageReference Include="AWSSDK.SQS" Version="4.0.100.7" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.4" />
+    <!-- Khai báo tường minh (public) để Relational 9.0.4 chảy sang Api, khớp compile-time. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

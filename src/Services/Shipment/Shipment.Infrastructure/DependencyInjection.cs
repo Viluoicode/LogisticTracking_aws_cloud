@@ -1,7 +1,12 @@
+using Amazon.Runtime;
+using Amazon.SimpleNotificationService;
 using Logistics.Shipment.Application.Abstractions;
+using Logistics.Shipment.Infrastructure.Messaging;
+using Logistics.Shipment.Infrastructure.Outbox;
 using Logistics.Shipment.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Logistics.Shipment.Infrastructure;
 
@@ -15,6 +20,24 @@ public static class DependencyInjection
         services.AddScoped<IShipmentRepository, ShipmentRepository>();
         // DbContext đóng luôn vai IUnitOfWork (cùng 1 instance/scope).
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<ShipmentDbContext>());
+
+        // Messaging: SNS client (LocalStack nếu có AWS_ENDPOINT_URL, ngược lại AWS thật) + publisher + dispatcher.
+        services.AddSingleton<IAmazonSimpleNotificationService>(_ =>
+        {
+            var endpoint = Environment.GetEnvironmentVariable("AWS_ENDPOINT_URL");
+            if (!string.IsNullOrWhiteSpace(endpoint))
+            {
+                var config = new AmazonSimpleNotificationServiceConfig
+                {
+                    ServiceURL = endpoint,
+                    AuthenticationRegion = "ap-southeast-1"
+                };
+                return new AmazonSimpleNotificationServiceClient(new BasicAWSCredentials("test", "test"), config);
+            }
+            return new AmazonSimpleNotificationServiceClient();
+        });
+        services.AddSingleton<IEventPublisher, SnsEventPublisher>();
+        services.AddHostedService<OutboxDispatcher>();
 
         return services;
     }

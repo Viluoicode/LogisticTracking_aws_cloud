@@ -128,7 +128,11 @@ dotnet run --project src/Services/Shipment/Shipment.Api
 | **M3a** | Shipment domain (state machine) + EF mapping + InitialCreate migration + 5 unit test ✅ | ✅ |
 | **M3b** | RDS Postgres (CDK, cross-stack VPC/SG, Secrets Manager creds, free-tier) — synth ✅ | ✅ |
 | **M4** | ECS Fargate + ALB — **DEPLOYED lên AWS ✅**: 2 service .NET chạy sau ALB, target `healthy`, path routing `/shipments` `/track` verified (ap-southeast-1) | ✅ |
-| **M5** | SNS/SQS + Outbox + consumer + DLQ | ⬜ |
+| **M4.5** | Shipment app slice: use cases (MediatR) + EF repository + endpoints `/shipments` (create/get/update-status) + auto-migrate — **test local OK** (create/get/update/invalid/404, value-object query dịch SQL chuẩn) ✅ | ✅ |
+| **M5a** | Outbox: integration event contract + bảng `outbox_messages` + capture domain event atomic lúc SaveChanges — test local OK (2 row Created+PickedUp, chưa publish) ✅ | ✅ |
+| **M5b** | `IEventPublisher`+SNS adapter, `OutboxDispatcher` (BackgroundService), LocalStack bootstrap — test local OK (4 event publish → SNS fan-out → SQS tracking-queue, outbox marked processed) ✅ | ✅ |
+| **M5c-1** | Tracking consumer (SQS long-poll) + read-model (DB riêng) + idempotency (`processed_messages`) — **test end-to-end OK**: Shipment→SNS→SQS→Tracking read-model, `GET /track/{code}` trả timeline ✅ | ✅ |
+| **M5c-2** | Notification consumer + DLQ (redrive) | ⬜ |
 | **M6** | CI/CD (GitHub Actions → ECR → ECS) | ⬜ |
 | **M7** | CloudWatch + X-Ray + idempotency + resilience | ⬜ |
 | **M8** | Unit/integration tests + docs | ⬜ |
