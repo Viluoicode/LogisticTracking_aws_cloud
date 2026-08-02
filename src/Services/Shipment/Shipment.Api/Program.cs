@@ -9,12 +9,29 @@ using Logistics.Shipment.Infrastructure;
 using Logistics.Shipment.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// M7: log có cấu trúc (Serilog) — trên AWS đẩy vào CloudWatch Logs.
+builder.Host.UseSerilog((context, config) => config.WriteTo.Console());
 
 builder.Services.AddOpenApi();
 builder.Services.AddShipmentApplication();
 builder.Services.AddShipmentInfrastructure();
+
+// M7: health check kiểm tra kết nối DB (ALB dùng để biết task còn sống).
+builder.Services.AddHealthChecks().AddDbContextCheck<ShipmentDbContext>();
+
+// M7: distributed tracing (OpenTelemetry). Local -> console; AWS -> đổi exporter sang OTLP/X-Ray.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("shipment-api"))
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddConsoleExporter());
 
 var app = builder.Build();
 
@@ -26,11 +43,13 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 }
 
+app.UseSerilogRequestLogging(); // mỗi HTTP request -> 1 dòng log có cấu trúc
+
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
-// Health cho ALB target group (gọi thẳng /health trên container).
-app.MapGet("/health", () => Results.Ok(new { service = "shipment", status = "healthy" }));
+// M7: health check thật — 200 nếu DB reachable, 503 nếu không (ALB dựa vào đây).
+app.MapHealthChecks("/health");
 
 // Tạo shipment mới
 app.MapPost("/shipments", async (CreateShipmentRequest req, ISender sender, CancellationToken ct) =>

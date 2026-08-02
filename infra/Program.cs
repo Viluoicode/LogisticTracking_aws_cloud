@@ -33,6 +33,11 @@ sealed class Program
             data.Database,
             new StackProps { Description = "ECS Fargate services + ALB routing (M4)" });
 
+        // M6: role cho GitHub Actions deploy qua OIDC. Truyền repo: -c githubRepo=owner/repo
+        var githubRepo = (app.Node.TryGetContext("githubRepo") as string) ?? "Viluoicode/logistics-tracking";
+        new CicdStack(app, "Logistics-Cicd", githubRepo,
+            new StackProps { Description = "GitHub Actions OIDC deploy role (M6)" });
+
         app.Synth();
     }
 }

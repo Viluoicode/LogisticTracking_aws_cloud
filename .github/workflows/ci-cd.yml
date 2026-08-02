@@ -1,0 +1,72 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  id-token: write   # cần cho OIDC (GitHub xin token để assume role AWS)
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+
+jobs:
+  # ---------- CI: build + test (chạy cho mọi push & PR) ----------
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release --verbosity normal
+
+  # ---------- CD: build image -> ECR -> roll ECS (chỉ push vào main) ----------
+  deploy:
+    needs: build-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Xác thực AWS bằng OIDC — assume role tạm thời, KHÔNG dùng key dài hạn.
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push images (tag = git SHA + latest)
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          set -e
+          build_push () {
+            local svc=$1 proj=$2 dll=$3
+            docker build -f Dockerfile \
+              --build-arg PROJECT=$proj --build-arg APP_DLL=$dll \
+              -t $REGISTRY/logistics/$svc:$TAG -t $REGISTRY/logistics/$svc:latest .
+            docker push $REGISTRY/logistics/$svc:$TAG
+            docker push $REGISTRY/logistics/$svc:latest
+          }
+          build_push shipment     src/Services/Shipment/Shipment.Api/Shipment.Api.csproj           Shipment.Api.dll
+          build_push tracking     src/Services/Tracking/Tracking.Api/Tracking.Api.csproj           Tracking.Api.dll
+          build_push notification src/Services/Notification/Notification.Worker/Notification.Worker.csproj Notification.Worker.dll
+
+      - name: Roll ECS services (force new deployment -> kéo image :latest mới)
+        run: |
+          set -e
+          cluster=$(aws ecs list-clusters --query "clusterArns[0]" --output text)
+          for svc in $(aws ecs list-services --cluster "$cluster" --query "serviceArns[]" --output text); do
+            echo "Rolling $svc"
+            aws ecs update-service --cluster "$cluster" --service "$svc" --force-new-deployment >/dev/null
+          done

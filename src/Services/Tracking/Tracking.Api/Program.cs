@@ -3,11 +3,26 @@ using Logistics.Tracking.Application.Contracts;
 using Logistics.Tracking.Infrastructure;
 using Logistics.Tracking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// M7: log có cấu trúc (Serilog).
+builder.Host.UseSerilog((context, config) => config.WriteTo.Console());
+
 builder.Services.AddOpenApi();
 builder.Services.AddTrackingInfrastructure(); // DbContext + read store + SQS consumer
+builder.Services.AddHealthChecks().AddDbContextCheck<TrackingDbContext>();
+
+// M7: distributed tracing (OpenTelemetry). Local -> console; AWS -> đổi exporter sang OTLP/X-Ray.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("tracking-api"))
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddConsoleExporter());
 
 var app = builder.Build();
 
@@ -17,10 +32,13 @@ using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<TrackingDbContext>().Database.Migrate();
 }
 
+app.UseSerilogRequestLogging();
+
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
-app.MapGet("/health", () => Results.Ok(new { service = "tracking", status = "healthy" }));
+// M7: health check thật — kiểm DB.
+app.MapHealthChecks("/health");
 
 // Tra cứu timeline trạng thái theo mã vận đơn (đọc từ read-model dựng bởi consumer).
 app.MapGet("/track/{code}", async (string code, ITrackingReadStore store, CancellationToken ct) =>

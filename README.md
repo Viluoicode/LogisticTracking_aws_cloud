@@ -7,6 +7,17 @@ Hệ thống **theo dõi & giao kiện hàng chặng cuối (last-mile parcel de
 > tra cứu trạng thái gấp nhiều lần số lần đơn được cập nhật; gửi thông báo chạy bất đồng bộ qua hàng đợi
 > để không bao giờ chặn luồng cập nhật của tài xế; các service tách rời để một service lỗi không làm sập cả hệ.
 
+## Dự án này chứng minh điều gì
+
+- **Microservices .NET trên AWS thật** — không chỉ CRUD: VPC / ECS Fargate / ALB / RDS provisioned bằng **AWS CDK (C#)**, đã deploy & verify.
+- **Event-driven + Outbox pattern** giải bài toán dual-write; **SNS → SQS fan-out**; consumer **idempotent**; **DLQ** cho message lỗi.
+- **CQRS + Clean Architecture** mỗi service; **database-per-service**; eventual consistency.
+- **CI/CD** GitHub Actions qua **OIDC** (không key dài hạn) → ECR → ECS.
+- **Observability**: Serilog (log có cấu trúc), health check kiểm DB, **OpenTelemetry** tracing, CloudWatch alarms.
+- **16 unit test** (domain state machine + use case) — `dotnet test`.
+
+▶ **Chạy thử local (~2 phút, cần Docker):** [docs/RUN.md](docs/RUN.md) · **Hiểu hạ tầng:** [docs/AWS-WALKTHROUGH.md](docs/AWS-WALKTHROUGH.md)
+
 ## Bài toán nghiệp vụ (value)
 
 Last-mile là trung tâm chi phí của giao vận e-commerce. Hệ này nhắm 3 điểm đau tốn tiền thật:
@@ -133,9 +144,9 @@ dotnet run --project src/Services/Shipment/Shipment.Api
 | **M5b** | `IEventPublisher`+SNS adapter, `OutboxDispatcher` (BackgroundService), LocalStack bootstrap — test local OK (4 event publish → SNS fan-out → SQS tracking-queue, outbox marked processed) ✅ | ✅ |
 | **M5c-1** | Tracking consumer (SQS long-poll) + read-model (DB riêng) + idempotency (`processed_messages`) — **test end-to-end OK**: Shipment→SNS→SQS→Tracking read-model, `GET /track/{code}` trả timeline ✅ | ✅ |
 | **M5c-2** | Notification consumer (SQS, idempotent) + **DLQ** (redrive maxReceiveCount=3) — test OK: event→notification "sent"; message rác fail 3 lần → notif-dlq ✅ | ✅ |
-| **M6** | CI/CD (GitHub Actions → ECR → ECS) | ⬜ |
-| **M7** | CloudWatch + X-Ray + idempotency + resilience | ⬜ |
-| **M8** | Unit/integration tests + docs | ⬜ |
+| **M6** | CI/CD: GitHub Actions (build/test → OIDC → ECR → roll ECS) + `CicdStack` (OIDC deploy role) — synth ✅, `dotnet test` 5/5 ✅ (chạy thật khi push GitHub + set secret) | ✅ |
+| **M7** | Observability: Serilog (log có cấu trúc + request logging) + health check kiểm DB + OpenTelemetry tracing (console→X-Ray) + CloudWatch alarms (ALB 5xx, ECS CPU) — test local + synth ✅ | ✅ |
+| **M8** | Tests (16 unit: domain state machine + use case, fake không cần mock lib) + docs (README dẫn chuyện + RUN.md) ✅ | ✅ |
 
 ## Cost controls
 

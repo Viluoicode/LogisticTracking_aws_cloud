@@ -1,4 +1,5 @@
 using Amazon.CDK;
+using Amazon.CDK.AWS.CloudWatch;
 using Amazon.CDK.AWS.EC2;
 using Amazon.CDK.AWS.ECR;
 using Amazon.CDK.AWS.ECS;
@@ -56,6 +57,14 @@ public class ComputeStack : Stack
         AddHttpService("Shipment", shipmentRepo, "/shipments*");
         AddHttpService("Tracking", trackingRepo, "/track*");
 
+        // M7: alarm khi ALB trả nhiều lỗi 5xx (dấu hiệu service hỏng).
+        alb.Metrics.HttpCodeElb(HttpCodeElb.ELB_5XX_COUNT).CreateAlarm(this, "Alb5xxAlarm", new CreateAlarmOptions
+        {
+            Threshold = 5,
+            EvaluationPeriods = 1,
+            AlarmDescription = "ALB tra 5xx >= 5 trong 1 chu ky"
+        });
+
         _ = new CfnOutput(this, "AlbDns", new CfnOutputProps { Value = alb.LoadBalancerDnsName });
     }
 
@@ -100,6 +109,14 @@ public class ComputeStack : Stack
             SecurityGroups = new[] { _ecsSg },
             AssignPublicIp = true,   // public subnet -> ra internet qua IGW, né NAT
             VpcSubnets = new SubnetSelection { SubnetType = SubnetType.PUBLIC }
+        });
+
+        // M7: alarm khi CPU service cao kéo dài.
+        service.MetricCpuUtilization().CreateAlarm(this, $"{name}CpuHighAlarm", new CreateAlarmOptions
+        {
+            Threshold = 80,
+            EvaluationPeriods = 3,
+            AlarmDescription = $"{name} CPU > 80%"
         });
 
         _priority += 10;
