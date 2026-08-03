@@ -13,7 +13,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddNotificationInfrastructure(this IServiceCollection services)
     {
-        services.AddDbContext<NotificationDbContext>(options => options.UseNpgsql(BuildConnectionString()));
+        services.AddDbContext<NotificationDbContext>(options =>
+            options.UseNpgsql(BuildConnectionString(), npg => npg.CommandTimeout(30))); // B8: DB command timeout
         services.AddScoped<INotificationStore, NotificationStore>();
 
         services.AddSingleton<IAmazonSQS>(_ =>

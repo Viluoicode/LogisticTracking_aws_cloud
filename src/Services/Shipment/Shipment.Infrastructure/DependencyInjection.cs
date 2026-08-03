@@ -16,8 +16,10 @@ public static class DependencyInjection
     {
         var connectionString = BuildConnectionString();
 
-        services.AddDbContext<ShipmentDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddDbContext<ShipmentDbContext>(options =>
+            options.UseNpgsql(connectionString, npg => npg.CommandTimeout(30))); // B8: DB command timeout
         services.AddScoped<IShipmentRepository, ShipmentRepository>();
+        services.AddScoped<IIdempotencyStore, IdempotencyStore>();
         // DbContext đóng luôn vai IUnitOfWork (cùng 1 instance/scope).
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<ShipmentDbContext>());
 

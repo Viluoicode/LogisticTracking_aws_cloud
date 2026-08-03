@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Amazon.SQS;
 using Amazon.SQS.Model;
@@ -18,6 +19,7 @@ public sealed class NotifQueueConsumer(
     IAmazonSQS sqs,
     ILogger<NotifQueueConsumer> logger) : BackgroundService
 {
+    private static readonly ActivitySource ActivitySource = new("notification-consumer");
     private string _queueUrl = "";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -50,7 +52,8 @@ public sealed class NotifQueueConsumer(
         {
             QueueUrl = _queueUrl,
             MaxNumberOfMessages = 10,
-            WaitTimeSeconds = 5
+            WaitTimeSeconds = 5,
+            MessageAttributeNames = ["All"] // B9: lấy cả traceparent
         }, ct);
 
         if (response.Messages is null || response.Messages.Count == 0) return;
@@ -60,6 +63,10 @@ public sealed class NotifQueueConsumer(
 
         foreach (var message in response.Messages)
         {
+            // B9: nối trace từ publisher (traceparent trong message attribute).
+            var traceParent = message.MessageAttributes is not null
+                && message.MessageAttributes.TryGetValue("traceparent", out var tp) ? tp.StringValue : null;
+            using var activity = ActivitySource.StartActivity("notification.consume", ActivityKind.Consumer, traceParent);
             try
             {
                 var evt = JsonSerializer.Deserialize<ShipmentStatusChangedIntegrationEvent>(message.Body)

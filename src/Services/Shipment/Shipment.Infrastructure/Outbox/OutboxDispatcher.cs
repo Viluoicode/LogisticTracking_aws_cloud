@@ -46,7 +46,7 @@ public sealed class OutboxDispatcher(
         {
             try
             {
-                await publisher.PublishAsync(message.Type, message.Content, ct);
+                await publisher.PublishAsync(message.Type, message.Content, message.TraceParent, ct);
                 message.ProcessedOnUtc = DateTime.UtcNow;
                 message.Error = null;
             }

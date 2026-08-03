@@ -1,4 +1,5 @@
 using Logistics.Shipment.Application;
+using Logistics.Shipment.Application.Abstractions;
 using Logistics.Shipment.Application.Contracts;
 using Logistics.Shipment.Application.Exceptions;
 using Logistics.Shipment.Application.Features.CreateShipment;
@@ -85,9 +86,22 @@ if (app.Environment.IsDevelopment())
 app.MapHealthChecks("/health");
 
 // Tạo shipment mới
-app.MapPost("/shipments", async (CreateShipmentRequest req, ISender sender, CancellationToken ct) =>
+app.MapPost("/shipments", async (CreateShipmentRequest req, ISender sender, IIdempotencyStore idem, HttpContext http, CancellationToken ct) =>
 {
+    // B11: Idempotency-Key -> POST lặp (client retry) trả cùng kết quả, không tạo trùng.
+    var key = http.Request.Headers["Idempotency-Key"].FirstOrDefault();
+    if (!string.IsNullOrWhiteSpace(key))
+    {
+        var existing = await idem.GetTrackingCodeAsync(key, ct);
+        if (existing is not null)
+            return Results.Ok(new { trackingCode = existing, idempotentReplay = true });
+    }
+
     var code = await sender.Send(new CreateShipmentCommand(req.Origin, req.Destination), ct);
+
+    if (!string.IsNullOrWhiteSpace(key))
+        await idem.SaveAsync(key, code, ct);
+
     return Results.Created($"/shipments/{code}", new { trackingCode = code });
 }).RequireAuthorization();
 

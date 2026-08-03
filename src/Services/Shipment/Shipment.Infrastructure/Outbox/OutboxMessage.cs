@@ -12,4 +12,5 @@ public sealed class OutboxMessage
     public DateTime OccurredOnUtc { get; set; }
     public DateTime? ProcessedOnUtc { get; set; }     // null = chưa publish
     public string? Error { get; set; }                // lỗi publish gần nhất (nếu có)
+    public string? TraceParent { get; set; }          // B9: W3C traceparent bắt lúc ghi (để nối trace xuyên service)
 }

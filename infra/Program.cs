@@ -8,35 +8,49 @@ sealed class Program
     {
         var app = new App();
 
-        // M1: mạng nền. Env lấy từ `aws configure` lúc deploy; synth không cần.
-        var network = new NetworkStack(app, "Logistics-Network", new StackProps
+        // B15: môi trường (dev/staging/prod). dev GIỮ tên gốc "Logistics-*" (không phá stack đã deploy);
+        // staging/prod -> tiền tố riêng để deploy song song, tách biệt.  Truyền: -c env=prod
+        var env = (app.Node.TryGetContext("env") as string ?? "dev").ToLowerInvariant();
+        string Id(string name) => env == "dev" ? $"Logistics-{name}" : $"Logistics-{env}-{name}";
+        var isProd = env == "prod";
+
+        // M1: mạng nền.
+        var network = new NetworkStack(app, Id("Network"), new StackProps
         {
-            Description = "VPC + subnets + security groups cho logistics-tracking (M1)"
+            Description = "VPC + subnets + security groups (M1)"
         });
 
-        // M2: container registry (độc lập với mạng).
-        var ecr = new EcrStack(app, "Logistics-Ecr", new StackProps
+        // M2: container registry.
+        var ecr = new EcrStack(app, Id("Ecr"), new StackProps
         {
             Description = "ECR repositories cho 3 service (M2)"
         });
 
-        // M3b: RDS Postgres — import VPC + RdsSg từ NetworkStack (cross-stack).
-        var data = new DataStack(app, "Logistics-Data", network.Vpc, network.RdsSg, new StackProps
+        // B12: SNS/SQS/DLQ messaging.
+        var messaging = new MessagingStack(app, Id("Messaging"), new StackProps
         {
-            Description = "RDS PostgreSQL + Secrets Manager creds (M3b)"
+            Description = "SNS topic + SQS queues + DLQ (B12)"
         });
 
-        // M4: ECS Fargate + ALB — ráp VPC/SG (M1) + ECR (M2) + RDS secret (M3b).
-        new ComputeStack(app, "Logistics-Compute",
+        // M3b: RDS Postgres (prod -> Multi-AZ).
+        var data = new DataStack(app, Id("Data"), network.Vpc, network.RdsSg, isProd, new StackProps
+        {
+            Description = "RDS PostgreSQL + Secrets Manager (M3b)"
+        });
+
+        // M4/B13: ECS Fargate (Shipment/Tracking API + Notification worker) + ALB.
+        new ComputeStack(app, Id("Compute"),
             network.Vpc, network.AlbSg, network.EcsSg,
-            ecr.ShipmentRepo, ecr.TrackingRepo,
-            data.Database,
-            new StackProps { Description = "ECS Fargate services + ALB routing (M4)" });
+            ecr.ShipmentRepo, ecr.TrackingRepo, ecr.NotificationRepo,
+            data.Database, messaging.Topic, messaging.TrackingQueue, messaging.NotifQueue,
+            new StackProps { Description = "ECS Fargate services + ALB (M4/B13)" });
 
         // M6: role cho GitHub Actions deploy qua OIDC. Truyền repo: -c githubRepo=owner/repo
         var githubRepo = (app.Node.TryGetContext("githubRepo") as string) ?? "Viluoicode/logistics-tracking";
-        new CicdStack(app, "Logistics-Cicd", githubRepo,
-            new StackProps { Description = "GitHub Actions OIDC deploy role (M6)" });
+        new CicdStack(app, Id("Cicd"), githubRepo, new StackProps
+        {
+            Description = "GitHub Actions OIDC deploy role (M6)"
+        });
 
         app.Synth();
     }

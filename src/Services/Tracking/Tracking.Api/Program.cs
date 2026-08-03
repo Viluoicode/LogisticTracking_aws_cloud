@@ -20,6 +20,7 @@ builder.Services.AddHealthChecks().AddDbContextCheck<TrackingDbContext>();
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r.AddService("tracking-api"))
     .WithTracing(t => t
+        .AddSource("tracking-consumer") // B9: span của consumer (nối trace từ Shipment)
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
         .AddConsoleExporter());

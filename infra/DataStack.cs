@@ -15,7 +15,7 @@ public class DataStack : Stack
 {
     public DatabaseInstance Database { get; }
 
-    public DataStack(Construct scope, string id, IVpc vpc, ISecurityGroup rdsSg, IStackProps? props = null)
+    public DataStack(Construct scope, string id, IVpc vpc, ISecurityGroup rdsSg, bool multiAz = false, IStackProps? props = null)
         : base(scope, id, props)
     {
         Database = new DatabaseInstance(this, "ShipmentDb", new DatabaseInstanceProps
@@ -36,7 +36,7 @@ public class DataStack : Stack
             AllocatedStorage = 20,        // free-tier 20GB
             StorageType = StorageType.GP2,
             StorageEncrypted = true,      // free + best practice
-            MultiAz = false,              // single-AZ: free-tier + rẻ (dev)
+            MultiAz = multiAz,           // B15: prod -> Multi-AZ (HA); dev/staging -> single-AZ (rẻ)
             PubliclyAccessible = false,   // private, chỉ ECS gọi được
 
             // Dev/portfolio: destroy sạch, không giữ backup

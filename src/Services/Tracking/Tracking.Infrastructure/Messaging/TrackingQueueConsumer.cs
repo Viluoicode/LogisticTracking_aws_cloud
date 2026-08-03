@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Amazon.SQS;
 using Amazon.SQS.Model;
@@ -19,6 +20,7 @@ public sealed class TrackingQueueConsumer(
     IAmazonSQS sqs,
     ILogger<TrackingQueueConsumer> logger) : BackgroundService
 {
+    private static readonly ActivitySource ActivitySource = new("tracking-consumer");
     private string _queueUrl = "";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -51,7 +53,8 @@ public sealed class TrackingQueueConsumer(
         {
             QueueUrl = _queueUrl,
             MaxNumberOfMessages = 10,
-            WaitTimeSeconds = 5 // long polling
+            WaitTimeSeconds = 5, // long polling
+            MessageAttributeNames = ["All"] // B9: lấy cả traceparent
         }, ct);
 
         if (response.Messages is null || response.Messages.Count == 0) return;
@@ -61,6 +64,10 @@ public sealed class TrackingQueueConsumer(
 
         foreach (var message in response.Messages)
         {
+            // B9: nối trace từ publisher (traceparent trong message attribute) -> span xuyên service.
+            var traceParent = message.MessageAttributes is not null
+                && message.MessageAttributes.TryGetValue("traceparent", out var tp) ? tp.StringValue : null;
+            using var activity = ActivitySource.StartActivity("tracking.consume", ActivityKind.Consumer, traceParent);
             try
             {
                 var evt = JsonSerializer.Deserialize<ShipmentStatusChangedIntegrationEvent>(message.Body);

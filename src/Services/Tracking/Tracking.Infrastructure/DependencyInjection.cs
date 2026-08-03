@@ -13,7 +13,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddTrackingInfrastructure(this IServiceCollection services)
     {
-        services.AddDbContext<TrackingDbContext>(options => options.UseNpgsql(BuildConnectionString()));
+        services.AddDbContext<TrackingDbContext>(options =>
+            options.UseNpgsql(BuildConnectionString(), npg => npg.CommandTimeout(30))); // B8: DB command timeout
         services.AddScoped<ITrackingReadStore, TrackingReadStore>();
 
         services.AddSingleton<IAmazonSQS>(_ =>

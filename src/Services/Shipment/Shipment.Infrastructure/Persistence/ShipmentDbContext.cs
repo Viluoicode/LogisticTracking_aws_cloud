@@ -15,6 +15,7 @@ public sealed class ShipmentDbContext : DbContext, IUnitOfWork
 
     public DbSet<Domain.Shipment> Shipments => Set<Domain.Shipment>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,7 +50,9 @@ public sealed class ShipmentDbContext : DbContext, IUnitOfWork
                         Id = Guid.NewGuid(),
                         Type = nameof(ShipmentStatusChangedIntegrationEvent),
                         Content = JsonSerializer.Serialize(integrationEvent),
-                        OccurredOnUtc = e.OccurredOnUtc
+                        OccurredOnUtc = e.OccurredOnUtc,
+                        // B9: bắt trace hiện tại (đang trong Activity của HTTP request) để truyền đi cùng event.
+                        TraceParent = System.Diagnostics.Activity.Current?.Id
                     });
                 }
             }
